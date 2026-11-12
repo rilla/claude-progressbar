@@ -1,11 +1,15 @@
 #!/bin/sh
 # Turns the progress bars on or off for the session that runs it. The
 # statusline command starts the plugin only for a session with a flag here.
+# A session the app runs as a job keeps its job id across resumes, while
+# its session id changes, so the job id names the flag when there is one.
 set -eu
 
-session=${CLAUDE_CODE_SESSION_ID:-}
+job=${CLAUDE_JOB_DIR:-}
+session=${job##*/}
+session=${session:-${CLAUDE_CODE_SESSION_ID:-}}
 if [ -z "$session" ]; then
-  echo "no CLAUDE_CODE_SESSION_ID: run this from a Claude Code session" >&2
+  echo "no CLAUDE_JOB_DIR or CLAUDE_CODE_SESSION_ID: run this from a Claude Code session" >&2
   exit 1
 fi
 case "$session" in

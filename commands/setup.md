@@ -10,7 +10,7 @@ Wire claude-progressbar into the user's statusline. It runs on Linux, macOS and 
    ```json
    "statusLine": {
      "type": "command",
-     "command": "sh -c '[ -e \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/progressbar/on/${CLAUDE_CODE_SESSION_ID:-.none}\" ] || exit 0; exec python3 -S \"$(ls -d \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"/plugins/cache/claude-progressbar/progressbar/*/ | sort -V | tail -1)scripts/statusline.py\"'",
+     "command": "sh -c 'k=${CLAUDE_JOB_DIR##*/}; [ -e \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/progressbar/on/${k:-${CLAUDE_CODE_SESSION_ID:-.none}}\" ] || exit 0; exec python3 -S \"$(ls -d \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"/plugins/cache/claude-progressbar/progressbar/*/ | sort -V | tail -1)scripts/statusline.py\"'",
      "refreshInterval": 1
    }
    ```
@@ -19,7 +19,7 @@ Wire claude-progressbar into the user's statusline. It runs on Linux, macOS and 
 
    `refreshInterval` is what keeps the bars moving while a command runs, because no other statusline trigger fires during a long tool call.
 
-   The bars are off in every session until the user runs `/progressbar:on` in it, and `/progressbar:off` turns them off again. The test at the start of the command is what keeps a session that hasn't opted in cheap: it starts only `sh`, about 5 ms of CPU a refresh, and Python (about 50 ms) runs only where the bars are on.
+   The bars are off in every session until the user runs `/progressbar:on` in it, and `/progressbar:off` turns them off again, and the choice survives a resume. The test at the start of the command is what keeps a session that hasn't opted in cheap: it starts only `sh`, about 5 ms of CPU a refresh, and Python (about 50 ms) runs only where the bars are on.
 3. Keep whatever the previous `statusLine.command` showed by adding a `--wrap` after `statusline.py\"`: `--wrap claude-hud` when it was claude-hud (claude-progressbar then finds and runs the installed claude-hud), otherwise `--wrap '<previous command>'`. With no `--wrap`, only the bars are shown. When there was a previous command, also replace `exit 0` with `exec <previous command>`, so sessions without the bars still show it.
 4. The HUD shows at most three bars and folds the rest into `+N more running`. Add `--max-rows N` after `statusline.py\"` only when the user asks for a different budget.
 5. The bars are drawn in the `rise` style by default: braille cells that fill bottom-up over a dotted floor. Add `--style NAME` after `statusline.py\"` to pick another: `dots` (a lit dot matrix), `rail` (a fill riding a dotted rail), `graph` (a chart of the command's output over its run), `field` (plan-progress's twinkling dot field, two rows per command), `today` (eighth-blocks), `ruler` (eighth-blocks with quarter ticks), `digits` (the number first, then a thin line), `segments` (twenty countable squares), `countdown` (time left and the end time), or `history` (the run against its past durations). `field` takes its accent from a kitty colour file when given `--palette FILE`, such as a theme generator's output; otherwise it uses a default violet.
