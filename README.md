@@ -78,7 +78,7 @@ Every command Claude runs is a shell started by the `claude` process, with its o
 
 When a command finishes, its duration is appended to `~/.local/state/claude-progressbar/history.jsonl`, keyed by the command with leading `cd …`, variable assignments and wrappers such as `sudo`, `timeout` and `rtk` stripped. The estimate is the median of the last seven runs. A command never seen before borrows from commands that start the same way, such as `nix build`, but only when those runs agree within a factor of three. In a chain such as `setup && main`, the last command decides which commands it borrows from.
 
-The plugin also ships a skill, `long-commands`. It tells Claude to keep progress visible on long commands: let output flow instead of piping it into `tail`, use flags such as `rsync --info=progress2`, and print `n/m` in its own loops.
+The plugin also ships a skill, `long-commands`. It tells Claude to run long commands in the background with their output whole, so the bar can read it and the conversation never receives it, and then to judge each one by its exit status and the tail of its output file. It also asks for flags such as `rsync --info=progress2`, and for `n/m` lines in Claude's own loops.
 
 ## Cost
 
