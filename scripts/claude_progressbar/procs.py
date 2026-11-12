@@ -9,6 +9,9 @@ from .parse import family, normalize
 TASK_OUTPUT = re.compile(r"[\\/]tasks[\\/][^\\/]+\.output$")
 
 
+VERSIONED_CLAUDE = re.compile(r"[\\/]claude[\\/]versions[\\/][^\\/]+$", re.IGNORECASE)
+
+
 SCRIPT_FLAG = re.compile(r"-[a-z]{0,2}c[a-z]{0,2}|-command", re.IGNORECASE)
 
 
@@ -30,7 +33,7 @@ def is_claude(backend, pid, name):
         argv = backend.argv(pid)
     except OSError:
         return False
-    return any(program(a).split(" ")[0] in ("claude", "cli.js") for a in argv[:2])
+    return any(program(a).split(" ")[0] in ("claude", "cli.js") or VERSIONED_CLAUDE.search(a) for a in argv[:2])
 
 
 def claude_ancestor(backend, pid):
