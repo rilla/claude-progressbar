@@ -4,7 +4,7 @@ import os
 import sys
 import time
 
-from .util import state_dir
+from .util import private_dir, state_dir
 from .parse import family, output_lines
 from .procs import file_mtime, running_tasks
 from .history import estimate, load_history, track
@@ -69,8 +69,12 @@ def options(argv):
 
 def runtime_fallback():
     if hasattr(os, "getuid"):
-        return f"/tmp/claude-progressbar-{os.getuid()}"
+        return private_dir(os.path.join(os.environ.get("TMPDIR") or "/tmp", f"claude-progressbar-{os.getuid()}"))
     return os.environ.get("TEMP") or os.environ.get("TMP") or os.path.expanduser("~")
+
+
+def runtime_dir():
+    return state_dir("XDG_RUNTIME_DIR", None if os.environ.get("XDG_RUNTIME_DIR") else runtime_fallback())
 
 
 def main():
@@ -86,14 +90,21 @@ def main():
         data = {}
     session = str(data.get("session_id") or "default")
     slug = hashlib.sha1(session.encode()).hexdigest()[:16]
-    runtime = state_dir("XDG_RUNTIME_DIR", runtime_fallback())
+    try:
+        runtime, refused = runtime_dir(), None
+    except OSError as error:
+        runtime, refused = None, error
     cols = columns()
     lines = []
     command = hud_command(wrap)
     if command:
-        hud = hud_output(command, raw, data, cols, os.path.join(runtime, f"hud-{slug}.json"))
+        hud = hud_output(command, raw, data, cols, runtime and os.path.join(runtime, f"hud-{slug}.json"))
         if hud:
             lines.append(hud)
+    if refused:
+        lines.append(f"claude-progressbar: no bars, {refused}")
+        sys.stdout.write("\n".join(lines))
+        return
     try:
         history = os.path.join(state_dir("XDG_STATE_HOME", os.path.expanduser("~/.local/state")), "history.jsonl")
         lines.extend(progress_rows(session, os.path.join(runtime, f"state-{slug}.json"), history, cols, max_rows, style, palette))
