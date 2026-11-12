@@ -32,7 +32,7 @@ While Claude runs a long command, Claude Code shows a spinner and a timer. claud
 ```json
 "statusLine": {
   "type": "command",
-  "command": "sh -c 'exec python3 -S \"$(ls -d \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"/plugins/cache/claude-progressbar/progressbar/*/ | sort -V | tail -1)scripts/statusline.py\" --wrap claude-hud'",
+  "command": "sh -c '[ -e \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/progressbar/on/${CLAUDE_CODE_SESSION_ID:-.none}\" ] || exit 0; exec python3 -S \"$(ls -d \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"/plugins/cache/claude-progressbar/progressbar/*/ | sort -V | tail -1)scripts/statusline.py\" --wrap claude-hud'",
   "refreshInterval": 1
 }
 ```
@@ -40,6 +40,10 @@ While Claude runs a long command, Claude Code shows a spinner and a timer. claud
 On Windows, write `python` in place of `python3` if `python3` only opens the Microsoft Store. Claude Code runs the statusline through Git Bash there, so the rest of the command is unchanged.
 
 `refreshInterval` is what keeps the bars moving: nothing else re-runs the statusline during a long tool call.
+
+The bars are off in every session until you run `/progressbar:on` in it; `/progressbar:off` turns them off again. Claude Code still runs the statusline command every second in every session, so the command starts with a test for that session's flag in `~/.claude/progressbar/on/`. A session that hasn't opted in starts only `sh`, about 5 ms of CPU, and never Python, which costs about 50 ms.
+
+That test hides the whole statusline in a session that hasn't opted in, including anything given to `--wrap`. To keep another statusline there, replace `exit 0` with `exec <that command>`. With claude-hud, that's the `node …/claude-hud/…/dist/index.js` command it installed, since `--wrap claude-hud` finds that path only once Python runs.
 
 **Requirements:** Linux, macOS or Windows (native with Git for Windows, or WSL2), Python 3.9 or newer, and a Claude Code release whose `statusLine` supports `refreshInterval`. No other dependencies.
 
@@ -78,11 +82,11 @@ Every command Claude runs is a shell started by the `claude` process, with its o
 
 When a command finishes, its duration is appended to `~/.local/state/claude-progressbar/history.jsonl`, keyed by the command with leading `cd …`, variable assignments and wrappers such as `sudo`, `timeout` and `rtk` stripped. The estimate is the median of the last seven runs. A command never seen before borrows from commands that start the same way, such as `nix build`, but only when those runs agree within a factor of three. In a chain such as `setup && main`, the last command decides which commands it borrows from.
 
-The plugin also ships a skill, `long-commands`. It tells Claude to run long commands in the background with their output whole, so the bar can read it and the conversation never receives it, and then to judge each one by its exit status and the tail of its output file. It also asks for flags such as `rsync --info=progress2`, and for `n/m` lines in Claude's own loops.
+`/progressbar:on` also tells that session's Claude how to run commands so the bars have something to draw. It runs long commands in the background with their output whole, so the bar can read it and the conversation never receives it, and judges each one by its exit status and the tail of its output file. It asks for flags such as `rsync --info=progress2`, and for `n/m` lines in its own loops. `/progressbar:off` takes those rules back. Sessions that never opt in get neither the bars nor the rules.
 
 ## Cost
 
-Each refresh is a Python process using about 20 ms of CPU, once a second, in every open Claude Code session.
+Claude Code runs the statusline command once a second in every open session. In a session that hasn't run `/progressbar:on`, that's one `sh` testing for a file, about 5 ms of CPU. In one that has, it's a Python process, about 50 ms of CPU, measured on an Apple Silicon Mac with Homebrew's Python 3.14.
 
 ## Known limits
 

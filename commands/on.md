@@ -1,17 +1,20 @@
 ---
-name: long-commands
-description: Use before running any Bash command that may take more than about ten seconds — builds, rebuilds, downloads, syncs, test suites, batch loops — and when writing a script or loop that will. The statusline draws one progress bar per running command from the tail of that command's own output (its newest `NN%`, `n/m` or `n of m`), so the command has to run in the background with its output whole, and be judged afterwards by its exit status and the tail of its output file. Loads the rules for running, reading back, picking flags, shaping loops, and staying inside the three-bar budget.
+description: Show the progress bars in this session, and run long commands so they can be drawn
 ---
 
-# claude-progressbar
+!`sh "${CLAUDE_PLUGIN_ROOT}/scripts/switch.sh" on`
 
-The statusline shows one row per Bash command that is still running: a bar,
-the elapsed time and the command's last output line. The bar is **parsed**
-from the output when the newest line carries `NN%`, `n/m` or `n of m`;
-otherwise it is **estimated** from earlier runs of the same command;
-otherwise it bounces. Nothing is sent to you; the HUD reads the command's
-output file directly. Your job is to leave that file whole and keep it out
-of the conversation.
+Tell the user, in one short line, what the line above says. If it reports an error, stop there. Otherwise follow the rules below for the rest of this session, until the user runs `/progressbar:off`.
+
+# Running commands while the progress bars are on
+
+The statusline now shows one row per Bash command that is still running: a
+bar, the elapsed time and the command's last output line. The bar is
+**parsed** from the output when the newest line carries `NN%`, `n/m` or
+`n of m`; otherwise it is **estimated** from earlier runs of the same
+command; otherwise it bounces. Nothing is sent to you; the HUD reads the
+command's output file directly. Your job is to leave that file whole and keep
+it out of the conversation.
 
 ## Run long commands in the background, whole
 

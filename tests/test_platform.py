@@ -232,8 +232,23 @@ def documented_command():
 STUB = 'import sys\nprint("{version}", *sys.argv[1:])\n'
 
 
+def shell_run(script, env, args=()):
+    if os.name == "nt":
+        bash = git_bash()
+        if bash is None:
+            raise unittest.SkipTest("Git Bash not found")
+        return subprocess.run([bash, "-c", script, "sh", *args], env=env, capture_output=True, text=True, timeout=60)
+    return subprocess.run(["sh", "-c", script, "sh", *args], env=env, capture_output=True, text=True, timeout=60)
+
+
+def opt_in(config, session):
+    flags = os.path.join(config, "progressbar", "on")
+    os.makedirs(flags, exist_ok=True)
+    open(os.path.join(flags, session), "w").close()
+
+
 class InstallCommand(unittest.TestCase):
-    def test_the_readme_command_runs_the_newest_installed_version(self):
+    def run_documented(self, opted_in=(), session="sess"):
         command = documented_command()
         with tempfile.TemporaryDirectory() as d:
             for version in ("2.9.0", "2.10.0", "10.0.0-rc1", "9.1.0"):
@@ -241,16 +256,88 @@ class InstallCommand(unittest.TestCase):
                 os.makedirs(scripts)
                 with open(os.path.join(scripts, "statusline.py"), "w") as f:
                     f.write(STUB.format(version=version))
-            env = {**os.environ, "CLAUDE_CONFIG_DIR": d.replace("\\", "/")}
-            if os.name == "nt":
-                bash = git_bash()
-                if bash is None:
-                    self.skipTest("Git Bash not found")
-                run = subprocess.run([bash, "-c", command], env=env, capture_output=True, text=True, timeout=60)
-            else:
-                run = subprocess.run(command, shell=True, env=env, capture_output=True, text=True, timeout=60)
+            for flag in opted_in:
+                opt_in(d, flag)
+            env = {k: v for k, v in os.environ.items() if k != "CLAUDE_CODE_SESSION_ID"}
+            env["CLAUDE_CONFIG_DIR"] = d.replace("\\", "/")
+            if session is not None:
+                env["CLAUDE_CODE_SESSION_ID"] = session
+            return shell_run(command, env)
+
+    def test_the_readme_command_runs_the_newest_installed_version(self):
+        run = self.run_documented(opted_in=["sess"])
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertEqual(run.stdout.split(), ["10.0.0-rc1", "--wrap", "claude-hud"])
+
+    def test_a_session_that_has_not_opted_in_starts_nothing(self):
+        run = self.run_documented(opted_in=["another"])
+        self.assertEqual((run.returncode, run.stdout, run.stderr), (0, "", ""))
+
+    def test_without_a_session_id_nothing_starts(self):
+        run = self.run_documented(opted_in=["sess", "none"], session=None)
+        self.assertEqual((run.returncode, run.stdout, run.stderr), (0, "", ""))
+
+    def test_setup_writes_the_readme_command(self):
+        with open(os.path.join(HERE, "..", "commands", "setup.md"), encoding="utf-8") as f:
+            setup = f.read()
+        found = re.search(r'"command": ("sh -c .*?"),?\n', setup)
+        self.assertIsNotNone(found, "setup.md has no statusLine command")
+        self.assertEqual(json.loads(found.group(1)), documented_command().replace(" --wrap claude-hud", ""))
+
+
+SWITCH = os.path.join(SCRIPTS, "switch.sh")
+
+
+class Switch(unittest.TestCase):
+    def setUp(self):
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        self.config = scratch.name
+        self.flag = os.path.join(self.config, "progressbar", "on", "sess")
+
+    def switch(self, state, session="sess"):
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDE_CODE_SESSION_ID"}
+        env["CLAUDE_CONFIG_DIR"] = self.config.replace("\\", "/")
+        if session is not None:
+            env["CLAUDE_CODE_SESSION_ID"] = session
+        return shell_run('exec sh "$1" "$2"', env, [SWITCH.replace("\\", "/"), state])
+
+    def test_on_opts_this_session_in_and_off_opts_it_out(self):
+        on = self.switch("on")
+        self.assertEqual(on.returncode, 0, on.stderr)
+        self.assertTrue(os.path.isfile(self.flag))
+        off = self.switch("off")
+        self.assertEqual(off.returncode, 0, off.stderr)
+        self.assertFalse(os.path.exists(self.flag))
+
+    def test_off_twice_is_fine(self):
+        self.assertEqual(self.switch("off").returncode, 0)
+
+    def test_without_a_session_id_it_refuses_and_writes_nothing(self):
+        run = self.switch("on", session=None)
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("session", run.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.config, "progressbar")))
+
+    def test_a_session_id_that_is_not_a_plain_name_is_refused(self):
+        outside = os.path.join(self.config, "keep")
+        open(outside, "w").close()
+        run = self.switch("off", session="../../keep")
+        self.assertNotEqual(run.returncode, 0)
+        self.assertTrue(os.path.exists(outside))
+
+    def test_the_gates_fallback_name_can_never_be_switched_on(self):
+        run = self.switch("on", session=".none")
+        self.assertNotEqual(run.returncode, 0)
+        self.assertFalse(os.path.exists(os.path.join(self.config, "progressbar")))
+
+    def test_ids_with_underscores_can_opt_in(self):
+        self.assertEqual(self.switch("on", session="sdk_run-1").returncode, 0)
+
+    def test_an_unknown_state_is_refused(self):
+        run = self.switch("maybe")
+        self.assertNotEqual(run.returncode, 0)
+        self.assertFalse(os.path.exists(self.flag))
 
 
 if __name__ == "__main__":

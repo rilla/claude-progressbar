@@ -14,7 +14,7 @@ sys.path.insert(0, HERE)
 
 from claude_progressbar.parse import ANSI
 from mock_api import MockAnthropic
-from test_platform import documented_command, git_bash
+from test_platform import documented_command, git_bash, opt_in
 
 
 LIVE = os.environ.get("CLAUDE_PROGRESSBAR_LIVE") == "1"
@@ -81,6 +81,8 @@ class LiveClaude(unittest.TestCase):
             self.assertEqual(len(installed), 1, installed)
             self.assertTrue(os.path.isfile(os.path.join(home, "plugins", "cache", "claude-progressbar", "progressbar", installed[0], "scripts", "statusline.py")))
             env["CLAUDE_CONFIG_DIR"] = posix(home)
+            env["CLAUDE_CODE_SESSION_ID"] = "installed"
+            opt_in(home, "installed")
             shell = [git_bash() or self.fail("Git Bash not found"), "-c"] if os.name == "nt" else ["sh", "-c"]
             run = subprocess.run([*shell, documented_command()], env=env, input='{"session_id":"installed"}', capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
         self.assertEqual(run.returncode, 0, run.stderr)
