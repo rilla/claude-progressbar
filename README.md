@@ -32,7 +32,7 @@ While Claude runs a long command, Claude Code shows a spinner and a timer. claud
 ```json
 "statusLine": {
   "type": "command",
-  "command": "sh -c '[ -e \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/progressbar/on/${CLAUDE_CODE_SESSION_ID:-.none}\" ] || exit 0; exec python3 -S \"$(ls -d \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"/plugins/cache/claude-progressbar/progressbar/*/ | sort -V | tail -1)scripts/statusline.py\" --wrap claude-hud'",
+  "command": "sh -c 'k=${CLAUDE_JOB_DIR##*/}; [ -e \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/progressbar/on/${k:-${CLAUDE_CODE_SESSION_ID:-.none}}\" ] || exit 0; exec python3 -S \"$(ls -d \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"/plugins/cache/claude-progressbar/progressbar/*/ | sort -V | tail -1)scripts/statusline.py\" --wrap claude-hud'",
   "refreshInterval": 1
 }
 ```
@@ -41,7 +41,7 @@ On Windows, write `python` in place of `python3` if `python3` only opens the Mic
 
 `refreshInterval` is what keeps the bars moving: nothing else re-runs the statusline during a long tool call.
 
-The bars are off in every session until you run `/progressbar:on` in it; `/progressbar:off` turns them off again. Claude Code still runs the statusline command every second in every session, so the command starts with a test for that session's flag in `~/.claude/progressbar/on/`. A session that hasn't opted in starts only `sh`, about 5 ms of CPU, and never Python, which costs about 50 ms.
+The bars are off in every session until you run `/progressbar:on` in it; `/progressbar:off` turns them off again. Claude Code still runs the statusline command every second in every session, so the command starts with a test for that session's flag in `~/.claude/progressbar/on/`. The flag is named after the session's job when the app runs it as one (`CLAUDE_JOB_DIR`), because a resume gives the session a new id but keeps its job, and after the session id otherwise. A session that hasn't opted in starts only `sh`, about 5 ms of CPU, and never Python, which costs about 50 ms.
 
 That test hides the whole statusline in a session that hasn't opted in, including anything given to `--wrap`. To keep another statusline there, replace `exit 0` with `exec <that command>`. With claude-hud, that's the `node …/claude-hud/…/dist/index.js` command it installed, since `--wrap claude-hud` finds that path only once Python runs.
 

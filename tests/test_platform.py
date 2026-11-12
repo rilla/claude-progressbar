@@ -253,6 +253,16 @@ def shell_run(script, env, args=()):
     return subprocess.run(["sh", "-c", script, "sh", *args], env=env, capture_output=True, text=True, timeout=60)
 
 
+def claude_env(config, session, job=None):
+    env = {k: v for k, v in os.environ.items() if k not in ("CLAUDE_CODE_SESSION_ID", "CLAUDE_JOB_DIR")}
+    env["CLAUDE_CONFIG_DIR"] = config.replace("\\", "/")
+    if session is not None:
+        env["CLAUDE_CODE_SESSION_ID"] = session
+    if job is not None:
+        env["CLAUDE_JOB_DIR"] = job
+    return env
+
+
 def opt_in(config, session):
     flags = os.path.join(config, "progressbar", "on")
     os.makedirs(flags, exist_ok=True)
@@ -260,7 +270,7 @@ def opt_in(config, session):
 
 
 class InstallCommand(unittest.TestCase):
-    def run_documented(self, opted_in=(), session="sess"):
+    def run_documented(self, opted_in=(), session="sess", job=None):
         command = documented_command()
         with tempfile.TemporaryDirectory() as d:
             for version in ("2.9.0", "2.10.0", "10.0.0-rc1", "9.1.0"):
@@ -270,11 +280,7 @@ class InstallCommand(unittest.TestCase):
                     f.write(STUB.format(version=version))
             for flag in opted_in:
                 opt_in(d, flag)
-            env = {k: v for k, v in os.environ.items() if k != "CLAUDE_CODE_SESSION_ID"}
-            env["CLAUDE_CONFIG_DIR"] = d.replace("\\", "/")
-            if session is not None:
-                env["CLAUDE_CODE_SESSION_ID"] = session
-            return shell_run(command, env)
+            return shell_run(command, claude_env(d, session, job))
 
     def test_the_readme_command_runs_the_newest_installed_version(self):
         run = self.run_documented(opted_in=["sess"])
@@ -288,6 +294,14 @@ class InstallCommand(unittest.TestCase):
     def test_without_a_session_id_nothing_starts(self):
         run = self.run_documented(opted_in=["sess", "none"], session=None)
         self.assertEqual((run.returncode, run.stdout, run.stderr), (0, "", ""))
+
+    def test_a_resumed_job_keeps_its_bars(self):
+        run = self.run_documented(opted_in=["98d23db5"], session="resumed-id", job="/Users/u/.claude/jobs/98d23db5")
+        self.assertEqual(run.stdout.split(), ["10.0.0-rc1", "--wrap", "claude-hud"])
+
+    def test_a_jobs_bars_stay_off_with_only_an_old_session_flag(self):
+        run = self.run_documented(opted_in=["resumed-id"], session="resumed-id", job="/Users/u/.claude/jobs/98d23db5")
+        self.assertEqual((run.returncode, run.stdout), (0, ""))
 
     def test_setup_writes_the_readme_command(self):
         with open(os.path.join(HERE, "..", "commands", "setup.md"), encoding="utf-8") as f:
@@ -307,12 +321,15 @@ class Switch(unittest.TestCase):
         self.config = scratch.name
         self.flag = os.path.join(self.config, "progressbar", "on", "sess")
 
-    def switch(self, state, session="sess"):
-        env = {k: v for k, v in os.environ.items() if k != "CLAUDE_CODE_SESSION_ID"}
-        env["CLAUDE_CONFIG_DIR"] = self.config.replace("\\", "/")
-        if session is not None:
-            env["CLAUDE_CODE_SESSION_ID"] = session
-        return shell_run('exec sh "$1" "$2"', env, [SWITCH.replace("\\", "/"), state])
+    def switch(self, state, session="sess", job=None):
+        return shell_run('exec sh "$1" "$2"', claude_env(self.config, session, job), [SWITCH.replace("\\", "/"), state])
+
+    def test_a_job_keeps_its_flag_across_a_resume(self):
+        self.assertEqual(self.switch("on", session="first-id", job="/Users/u/.claude/jobs/98d23db5").returncode, 0)
+        self.assertTrue(os.path.isfile(os.path.join(self.config, "progressbar", "on", "98d23db5")))
+        off = self.switch("off", session="resumed-id", job="/Users/u/.claude/jobs/98d23db5")
+        self.assertEqual(off.returncode, 0, off.stderr)
+        self.assertEqual(os.listdir(os.path.join(self.config, "progressbar", "on")), [])
 
     def test_on_opts_this_session_in_and_off_opts_it_out(self):
         on = self.switch("on")
