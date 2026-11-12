@@ -30,7 +30,7 @@ def is_claude(backend, pid, name):
         argv = backend.argv(pid)
     except OSError:
         return False
-    return any(program(a) in ("claude", "cli.js") for a in argv[:2])
+    return any(program(a).split(" ")[0] in ("claude", "cli.js") for a in argv[:2])
 
 
 def claude_ancestor(backend, pid):

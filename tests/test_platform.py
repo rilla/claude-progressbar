@@ -80,6 +80,18 @@ class Discovery(unittest.TestCase):
         tasks = procs.running_tasks("sess", backend=fake, start=700)
         self.assertEqual([(t["pid"], t["key"]) for t in tasks], [("600", "make -j8")])
 
+    def test_background_sessions_run_under_a_titled_helper(self):
+        fake = FakeSystem({
+            1: proc("launchd", 0, 0.0, ["/sbin/launchd"]),
+            76094: proc("2.1.322", 1, 10.0, ["/Users/u/.local/bin/claude", "daemon", "run"]),
+            44242: proc("2.1.322", 76094, 11.0, ["claude bg-pty-host", "--bg-pty-host", "/tmp/cc-daemon-501/a2f08ff7/spare/3682dd06.pty.sock"]),
+            44250: proc("2.1.322", 44242, 12.0, ["claude bg-spare", "--bg-spare", "/tmp/cc-daemon-501/a2f08ff7/spare/3682dd06.claim.sock"]),
+            61040: proc("zsh", 44250, 20.0, ["/bin/zsh", "-c", "eval 'make -j8' < /dev/null"], MAC_TASK),
+            63752: proc("Python", 44250, 30.0, ["Python", "-S", "statusline.py"]),
+        })
+        self.assertEqual(procs.claude_ancestor(fake, 44250), 44250)
+        self.assertEqual([(t["pid"], t["key"]) for t in procs.running_tasks("sess", backend=fake, start=44250)], [("61040", "make -j8")])
+
     def test_node_install_is_found_by_its_script(self):
         fake = FakeSystem({
             500: proc("node", 1, 10.0, ["node", "/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js"]),
