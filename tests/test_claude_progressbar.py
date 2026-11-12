@@ -94,6 +94,10 @@ class CommandKeys(unittest.TestCase):
         for command, key in cases.items():
             self.assertEqual(sl.normalize(command), key, command)
 
+    def test_normalize_drops_control_characters(self):
+        self.assertEqual(sl.normalize("printf '\x1b]52;c;aGk=\x07' && make\x9b"), "printf ']52;c;aGk=' && make")
+        self.assertEqual(sl.normalize("a\x1b\tb\x07\nc"), "a b c")
+
     def test_family_is_program_plus_subcommand(self):
         cases = {
             "/usr/bin/make -j8": "make",

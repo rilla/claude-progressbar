@@ -40,7 +40,7 @@ TAIL_LINES = 8
 
 
 def normalize(command):
-    original = " ".join(command.split())
+    original = CONTROL.sub("", " ".join(command.split()))
     text = original
     while True:
         before = text
