@@ -56,7 +56,7 @@ def hud_output(command, raw, data, cols, cache_path):
         stamp = ""
     stable = json.dumps({k: v for k, v in data.items() if k != "cost"}, sort_keys=True)
     key = hashlib.sha1(f"{stable}|{stamp}|{cols}|{command}".encode()).hexdigest()
-    cached = read_json(cache_path)
+    cached = read_json(cache_path) if cache_path else {}
     if cached.get("key") == key and time.time() - cached.get("t", 0) < HUD_MAX_AGE:
         return cached.get("out", "")
     import subprocess
@@ -76,5 +76,6 @@ def hud_output(command, raw, data, cols, cache_path):
         out = result.stdout.rstrip("\n")
     except (OSError, subprocess.TimeoutExpired):
         return cached.get("out", "")
-    write_atomic(cache_path, json.dumps({"key": key, "t": time.time(), "out": out}))
+    if cache_path:
+        write_atomic(cache_path, json.dumps({"key": key, "t": time.time(), "out": out}))
     return out

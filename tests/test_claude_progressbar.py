@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import io
 import json
 import os
 import sys
@@ -6,13 +7,14 @@ import tempfile
 import time
 import types
 import unittest
+from unittest import mock
 
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "scripts"))
 sys.path.insert(0, HERE)
 
-from claude_progressbar import cli, draw, history, model, parse, procs
+from claude_progressbar import cli, draw, history, model, parse, procs, util
 from claude_progressbar import styles
 from claude_progressbar.styles import blocks, braille, field
 
@@ -366,6 +368,75 @@ class Platform(unittest.TestCase):
         self.assertIsNone(hud.hud_command(None))
         self.assertIsNone(hud.hud_command(""))
         self.assertEqual(hud.hud_command("echo hi"), "echo hi")
+
+
+@unittest.skipIf(os.name == "nt", "POSIX permissions")
+class StateDirs(unittest.TestCase):
+    def setUp(self):
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        self.base = scratch.name
+        self.env = mock.patch.dict(os.environ, {"XDG_STATE_HOME": self.base})
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+
+    def mode(self, path):
+        return os.stat(path).st_mode & 0o777
+
+    def test_a_new_state_dir_is_private(self):
+        path = util.state_dir("XDG_STATE_HOME", "/unused")
+        self.assertEqual(path, os.path.join(self.base, "claude-progressbar"))
+        self.assertEqual(self.mode(path), 0o700)
+
+    def test_a_loose_state_dir_of_ours_is_tightened(self):
+        os.mkdir(os.path.join(self.base, "claude-progressbar"), 0o755)
+        self.assertEqual(self.mode(util.state_dir("XDG_STATE_HOME", "/unused")), 0o700)
+
+    def test_a_symlinked_state_dir_is_refused(self):
+        elsewhere = os.path.join(self.base, "elsewhere")
+        os.mkdir(elsewhere)
+        os.symlink(elsewhere, os.path.join(self.base, "claude-progressbar"))
+        with self.assertRaises(PermissionError):
+            util.state_dir("XDG_STATE_HOME", "/unused")
+
+    def test_a_dangling_symlink_is_refused(self):
+        os.symlink(os.path.join(self.base, "nowhere"), os.path.join(self.base, "claude-progressbar"))
+        with self.assertRaises(OSError):
+            util.state_dir("XDG_STATE_HOME", "/unused")
+        self.assertFalse(os.path.exists(os.path.join(self.base, "nowhere")))
+
+    def test_a_refused_runtime_dir_still_draws_the_wrapped_hud_and_says_why(self):
+        out = io.StringIO()
+        with mock.patch.object(cli, "runtime_dir", side_effect=PermissionError("/tmp/x belongs to someone else")), \
+                mock.patch.object(sys, "argv", ["statusline.py", "--wrap", "echo hud"]), \
+                mock.patch.object(sys, "stdin", io.StringIO('{"session_id": "s"}')), \
+                mock.patch.object(sys, "stdout", out):
+            cli.main()
+        lines = out.getvalue().split("\n")
+        self.assertEqual(lines[0], "hud")
+        self.assertIn("/tmp/x belongs to someone else", lines[1])
+
+    def test_a_state_dir_owned_by_someone_else_is_refused(self):
+        os.mkdir(os.path.join(self.base, "claude-progressbar"), 0o700)
+        with mock.patch("os.getuid", return_value=os.getuid() + 1):
+            with self.assertRaises(PermissionError):
+                util.state_dir("XDG_STATE_HOME", "/unused")
+
+    def test_the_runtime_fallback_is_a_private_dir_in_the_users_temp(self):
+        with mock.patch.dict(os.environ, {"TMPDIR": self.base}):
+            path = cli.runtime_fallback()
+        self.assertEqual(path, os.path.join(self.base, f"claude-progressbar-{os.getuid()}"))
+        self.assertEqual(self.mode(path), 0o700)
+
+    def test_the_runtime_fallback_is_left_alone_when_xdg_runtime_dir_is_set(self):
+        runtime, temp = os.path.join(self.base, "run"), os.path.join(self.base, "tmp")
+        os.mkdir(runtime)
+        os.mkdir(temp)
+        with mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": runtime, "TMPDIR": temp}):
+            self.assertEqual(cli.runtime_dir(), os.path.join(runtime, "claude-progressbar"))
+        self.assertEqual(os.listdir(temp), [])
 
 
 class Options(unittest.TestCase):
