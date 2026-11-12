@@ -33,6 +33,9 @@ WRAPPERS = {"rtk", "sudo", "time", "nice", "nohup", "command", "exec", "env", "b
 CONNECTORS = {"&&", "||", ";"}
 
 
+LAUNCHERS = {"exec", "run"}
+
+
 TAIL_BYTES = 8192
 
 
@@ -62,6 +65,8 @@ def normalize(command):
 def family(key):
     words = normalize(CHAIN.split(key)[-1]).split(" ")
     head = os.path.basename(words[0])
+    if len(words) > 2 and words[1] in LAUNCHERS and SUBCOMMAND.fullmatch(words[2]):
+        return f"{head} {words[1]} {words[2]}"
     if len(words) > 1 and SUBCOMMAND.fullmatch(words[1]):
         return f"{head} {words[1]}"
     return head

@@ -6,6 +6,9 @@ from .draw import QUIET_AFTER
 MIN_ELAPSED = 1.5
 
 
+OVERRUN_LIMIT = 3
+
+
 def enrich(task, lines, mtime, exact, families):
     match = parse_match(lines)
     expected, samples = estimate_samples(task, exact, families)
@@ -30,7 +33,7 @@ def facts(task, now):
         mode, fraction = "parsed", task["progress"]
     elif expected and elapsed <= expected:
         mode, fraction = "estimate", elapsed / expected
-    elif expected:
+    elif expected and elapsed <= OVERRUN_LIMIT * expected:
         mode, fraction = "over", 1.0
     else:
         mode, fraction = "unknown", None

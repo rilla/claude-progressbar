@@ -112,6 +112,29 @@ class CommandKeys(unittest.TestCase):
         for key, group in cases.items():
             self.assertEqual(sl.family(key), group, key)
 
+    def test_a_launchers_family_names_what_it_launches(self):
+        cases = {
+            "bundle exec parallel_rspec spec": "bundle exec parallel_rspec",
+            "bundle exec rspec spec/db/user_context_spec.rb 2>&1 | grep -E 'examples,'": "bundle exec rspec",
+            "npm run build": "npm run build",
+            "uv run pytest -q": "uv run pytest",
+            "bundle exec": "bundle exec",
+        }
+        for key, group in cases.items():
+            self.assertEqual(sl.family(key), group, key)
+
+    def test_a_suite_borrows_nothing_from_single_spec_runs(self):
+        suite = "export PATH=/opt/homebrew/opt/postgresql@16/bin:$PATH TEST_DATABASE=finances_backend_test_gen15_ RAILS_ENV=test; bin/rake parallel:load_schema && bundle exec parallel_rspec spec"
+        singles = {
+            "bundle exec rspec spec/db/user_context_spec.rb 2>&1 | grep -E 'examples,|^rspec ./|expected|got:'": [3.5, 4.5],
+            "bundle exec rspec spec/db/user_context_spec.rb spec/acceptance/isolation_spec.rb 2>&1 | grep -E 'examples,|^rs": [8.2],
+        }
+        families = {}
+        for key, durations in singles.items():
+            families.setdefault(sl.family(key), []).extend(durations)
+        key = sl.normalize(suite)
+        self.assertIsNone(sl.estimate({"key": key, "family": sl.family(key)}, {}, families))
+
 
 class Parsing(unittest.TestCase):
     def test_progress_from_output(self):
@@ -341,6 +364,18 @@ class Stale(unittest.TestCase):
         now = 1000.0 + 16 * 60 + 56
         line = sl.ANSI.sub("", sl.rows([dict(self.PROBE, mtime=now - 2)], now, 160, [], "rise")[0])
         self.assertIn("~49%", line)
+
+    def test_a_run_far_past_its_estimate_shows_as_unknown(self):
+        suite = dict(self.PROBE, key="bundle exec parallel_rspec spec", estimate=4.5, samples=[3.5, 4.5, 8.2], last="....")
+        now = 1000.0 + 189
+        self.assertEqual(sl.facts(dict(suite, mtime=now - 1), now)["mode"], "unknown")
+        line = sl.ANSI.sub("", sl.rows([dict(suite, mtime=now - 1)], now, 160, [], "rise")[0])
+        self.assertNotIn("%", line)
+        self.assertIn("3m09s", line)
+
+    def test_a_run_a_little_past_its_estimate_is_still_over(self):
+        now = 1000.0 + 2 * 2081.0
+        self.assertEqual(sl.facts(dict(self.PROBE, mtime=now - 1), now)["mode"], "over")
 
     def test_a_chain_takes_its_family_from_the_last_command(self):
         self.assertEqual(sl.family(sl.normalize(self.PROBE["key"])), "bash scripts/probe.sh")
